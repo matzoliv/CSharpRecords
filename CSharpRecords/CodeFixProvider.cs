@@ -95,7 +95,14 @@ namespace CSharpRecords
                             field =>
                                 SF.Parameter( field.Declaration.Variables.First().Identifier )
                                     .WithType(
-                                        field.Declaration.Type is PredefinedTypeSyntax ?
+                                        field.AttributeLists.Any(
+                                            attributeList =>    
+                                                attributeList.Attributes.Any(   
+                                                    attribute =>
+                                                        attribute.Name.GetText(). == "ValueType" ||
+                                                        attribute.Name.GetText() == "CSharpRecords.ValueType"
+                                                )
+                                        ) ?
                                         SF.NullableType( field.Declaration.Type ) :
                                         field.Declaration.Type 
                                     )
