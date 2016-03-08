@@ -60,19 +60,26 @@ namespace CSharpRecords
             var withMethod = MakeWithMethod( typeDeclaration.Identifier.Text, publicReadonlyFields );
             var root = await document.GetSyntaxRootAsync( cancellationToken ).ConfigureAwait( false ) as CompilationUnitSyntax;
 
+            var maybePreviousConstructor =
+                typeDeclaration.Members
+                    .OfType<ConstructorDeclarationSyntax>()
+                    .FirstOrDefault();
+
+            var maybePreviousWithMethod =
+                typeDeclaration.Members
+                    .OfType<MethodDeclarationSyntax>()
+                    .Where( m => m.Identifier.ValueText == "With" )
+                    .FirstOrDefault();
+
+            var typeDeclarationWithConstructor =
+                maybePreviousConstructor == null ?
+                typeDeclaration.AddMembers( constructor ) :
+                typeDeclaration.ReplaceNode( maybePreviousConstructor, constructor );
+
             var newTypeDeclaration =
-                typeDeclaration.WithMembers(
-                    SF.List(
-                        typeDeclaration.Members
-                            .Where(
-                                m =>
-                                    !( m is ConstructorDeclarationSyntax ) &&
-                                    ( !( m is MethodDeclarationSyntax ) ||
-                                      ( m as MethodDeclarationSyntax ).Identifier.ValueText != "With" )
-                            )
-                        .Concat( new MemberDeclarationSyntax[] { withMethod, constructor } )
-                    )
-                );
+                maybePreviousWithMethod == null ?
+                typeDeclarationWithConstructor.AddMembers( withMethod ) :
+                typeDeclarationWithConstructor.ReplaceNode( maybePreviousWithMethod, withMethod );
 
             var newRoot = root.ReplaceNode( typeDeclaration, newTypeDeclaration );
             document = document.WithSyntaxRoot( newRoot );
@@ -97,6 +104,18 @@ namespace CSharpRecords
                                             SF.Token( SyntaxKind.EqualsToken ),
                                             SF.LiteralExpression( SyntaxKind.NullLiteralExpression ) ) ) ) ) );
 
+            var withMethodBodyStatements =
+                fields.Select(
+                    field =>
+                        SF.Argument(
+                            SF.BinaryExpression(
+                                SyntaxKind.CoalesceExpression,
+                                SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ),
+                                SF.MemberAccessExpression(
+                                    SyntaxKind.SimpleMemberAccessExpression,
+                                    SF.ThisExpression(),
+                                    SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ) ) ) ) );
+
             return
                 SF.MethodDeclaration(
                     SF.ParseTypeName( className ),
@@ -109,20 +128,8 @@ namespace CSharpRecords
                         SF.ReturnStatement(
                             SF.ObjectCreationExpression(
                                 SF.IdentifierName( className ),
-                                SF.ArgumentList(
-                                    SF.SeparatedList(
-                                        fields.Select(
-                                            field =>
-                                                SF.Argument(
-                                                    SF.BinaryExpression(
-                                                        SyntaxKind.CoalesceExpression,
-                                                        SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ),
-                                                        SF.MemberAccessExpression(
-                                                            SyntaxKind.SimpleMemberAccessExpression,
-                                                            SF.ThisExpression(),
-                                                            SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ) ) ) ) ) ) ),
+                                SF.ArgumentList( SF.SeparatedList( withMethodBodyStatements ) ),
                                 null ) ) ) );
-
         }
 
         private ConstructorDeclarationSyntax MakeConstructor ( string className, IEnumerable<FieldDeclarationSyntax> fields )
@@ -134,24 +141,24 @@ namespace CSharpRecords
                             SF.Parameter( field.Declaration.Variables.First().Identifier )
                                 .WithType( field.Declaration.Type ) ) ) );
 
+            var constructorBodyStatements =
+                fields.Select(
+                    field =>
+                        SF.ExpressionStatement(
+                            SF.AssignmentExpression(
+                                SyntaxKind.SimpleAssignmentExpression,
+                                SF.MemberAccessExpression(
+                                    SyntaxKind.SimpleMemberAccessExpression,
+                                    SF.ThisExpression(),
+                                    SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText )
+                                ),
+                                SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ) ) ) );
+
             return
                 SF.ConstructorDeclaration( className )
                     .WithModifiers( SF.TokenList( new[] { SF.Token( SyntaxKind.PublicKeyword ) } ) )
                     .WithParameterList( constructorParameters )
-                    .WithBody(
-                        SF.Block(
-                            fields.Select(
-                                field =>
-                                    SF.ExpressionStatement(
-                                        SF.AssignmentExpression(
-                                            SyntaxKind.SimpleAssignmentExpression,
-                                            SF.MemberAccessExpression(
-                                                SyntaxKind.SimpleMemberAccessExpression,
-                                                SF.ThisExpression(),
-                                                SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText )
-                                            ),
-                                            SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ) ) ) ) ) );
-
+                    .WithBody( SF.Block( constructorBodyStatements ) );
         }
     }
 }

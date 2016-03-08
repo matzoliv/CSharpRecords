@@ -73,6 +73,18 @@ namespace ConsoleApplication1
                                             SF.Token( SyntaxKind.EqualsToken ),
                                             SF.LiteralExpression( SyntaxKind.NullLiteralExpression ) ) ) ) ) );
 
+            var withMethodBodyStatements =
+                publicReadonlyFields.Select(
+                    field =>
+                        SF.Argument(
+                            SF.BinaryExpression(
+                                SyntaxKind.CoalesceExpression,
+                                SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ),
+                                SF.MemberAccessExpression(
+                                    SyntaxKind.SimpleMemberAccessExpression,
+                                    SF.ThisExpression(),
+                                    SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ) ) ) ) );
+
             var withMethod =
                 SF.MethodDeclaration(
                     SF.ParseTypeName( recordClass.Identifier.ValueText ),
@@ -85,18 +97,7 @@ namespace ConsoleApplication1
                         SF.ReturnStatement(
                             SF.ObjectCreationExpression(
                                 SF.IdentifierName( recordClass.Identifier.ValueText ),
-                                SF.ArgumentList(
-                                    SF.SeparatedList(
-                                        publicReadonlyFields.Select(
-                                            field =>
-                                                SF.Argument(
-                                                    SF.BinaryExpression(
-                                                        SyntaxKind.CoalesceExpression,
-                                                        SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ),
-                                                        SF.MemberAccessExpression(
-                                                            SyntaxKind.SimpleMemberAccessExpression,
-                                                            SF.ThisExpression(),
-                                                            SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ) ) ) ) ) ) ),
+                                SF.ArgumentList( SF.SeparatedList( withMethodBodyStatements ) ),
                                 null ) ) ) );
 
             var constructorParameters =
@@ -106,23 +107,24 @@ namespace ConsoleApplication1
                             SF.Parameter( field.Declaration.Variables.First().Identifier )
                                 .WithType( field.Declaration.Type ) ) ) );
 
+            var constructorBodyStatements =
+                publicReadonlyFields.Select(
+                    field =>
+                        SF.ExpressionStatement(
+                            SF.AssignmentExpression(
+                                SyntaxKind.SimpleAssignmentExpression,
+                                SF.MemberAccessExpression(
+                                    SyntaxKind.SimpleMemberAccessExpression,
+                                    SF.ThisExpression(),
+                                    SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText )
+                                ),
+                                SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ) ) ) );
+
             var constructor =
                 SF.ConstructorDeclaration( recordClass.Identifier.ValueText )
                     .WithModifiers( SF.TokenList( new[] { SF.Token( SyntaxKind.PublicKeyword ) } ) )
                     .WithParameterList( constructorParameters )
-                    .WithBody(
-                        SF.Block(
-                            publicReadonlyFields.Select(
-                                field =>
-                                    SF.ExpressionStatement(
-                                        SF.AssignmentExpression(
-                                            SyntaxKind.SimpleAssignmentExpression,
-                                            SF.MemberAccessExpression(
-                                                SyntaxKind.SimpleMemberAccessExpression,
-                                                SF.ThisExpression(),
-                                                SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText )
-                                            ),
-                                            SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ) ) ) ) ) );
+                    .WithBody( SF.Block( constructorBodyStatements ) );
 
             var str = constructor.ToFullString();
             var str2 = withMethod.ToFullString();
