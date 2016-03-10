@@ -2,7 +2,6 @@
 using System.Composition;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 using Microsoft.CodeAnalysis;
@@ -57,13 +56,6 @@ namespace CSharpRecords
                     .Where( field => field.Declaration.Variables.Any() );
 
             var constructor = MakeConstructor( typeDeclaration.Identifier.Text, publicReadonlyFields );
-            var withMethod = MakeWithMethod( typeDeclaration.Identifier.Text, publicReadonlyFields );
-            var root = await document.GetSyntaxRootAsync( cancellationToken ).ConfigureAwait( false ) as CompilationUnitSyntax;
-
-            var maybePreviousConstructor =
-                typeDeclaration.Members
-                    .OfType<ConstructorDeclarationSyntax>()
-                    .FirstOrDefault();
 
             var maybePreviousWithMethod =
                 typeDeclaration.Members
@@ -71,10 +63,33 @@ namespace CSharpRecords
                     .Where( m => m.Identifier.ValueText == "With" )
                     .FirstOrDefault();
 
+            var knownNullableTypeParameterNames =
+                maybePreviousWithMethod
+                    ?.ParameterList.Parameters
+                    .Where( param => param.Type is NullableTypeSyntax )
+                    .Select( param => param.Identifier.ValueText )
+                    .ToImmutableHashSet()
+                    ?? ImmutableHashSet<string>.Empty;        
+
+            var withMethod = MakeWithMethod( typeDeclaration.Identifier.Text, publicReadonlyFields, knownNullableTypeParameterNames );
+
+            var root = await document.GetSyntaxRootAsync( cancellationToken ).ConfigureAwait( false ) as CompilationUnitSyntax;
+
+            var maybePreviousConstructor =
+                typeDeclaration.Members
+                    .OfType<ConstructorDeclarationSyntax>()
+                    .FirstOrDefault();
+
             var typeDeclarationWithConstructor =
                 maybePreviousConstructor == null ?
                 typeDeclaration.AddMembers( constructor ) :
                 typeDeclaration.ReplaceNode( maybePreviousConstructor, constructor );
+
+            maybePreviousWithMethod =
+                typeDeclarationWithConstructor.Members
+                    .OfType<MethodDeclarationSyntax>()
+                    .Where( m => m.Identifier.ValueText == "With" )
+                    .FirstOrDefault();
 
             var newTypeDeclaration =
                 maybePreviousWithMethod == null ?
@@ -86,30 +101,27 @@ namespace CSharpRecords
             return document;
         }
 
-        private MethodDeclarationSyntax MakeWithMethod ( string className, IEnumerable<FieldDeclarationSyntax> fields )
+        private MethodDeclarationSyntax MakeWithMethod ( string className, IEnumerable<FieldDeclarationSyntax> fields, ImmutableHashSet<string> knownNullableTypeParameterNames )
         {
             var withMethodParameters =
                 SF.ParameterList(
                     SF.SeparatedList(
                         fields.Select(
                             field =>
-                                SF.Parameter( field.Declaration.Variables.First().Identifier )
-                                    .WithType(
-                                        field.AttributeLists.Any(
-                                            attributeList =>    
-                                                attributeList.Attributes.Any(   
-                                                    attribute =>
-                                                        attribute.Name.GetText(). == "ValueType" ||
-                                                        attribute.Name.GetText() == "CSharpRecords.ValueType"
-                                                )
-                                        ) ?
-                                        SF.NullableType( field.Declaration.Type ) :
-                                        field.Declaration.Type 
-                                    )
-                                    .WithDefault(
-                                        SF.EqualsValueClause(
-                                            SF.Token( SyntaxKind.EqualsToken ),
-                                            SF.LiteralExpression( SyntaxKind.NullLiteralExpression ) ) ) ) ) );
+                            {
+                                var parameterIdentifier = field.Declaration.Variables.First().Identifier;
+                                return
+                                    SF.Parameter( parameterIdentifier )
+                                        .WithType(
+                                            knownNullableTypeParameterNames.Contains( parameterIdentifier.ValueText ) ?
+                                            SF.NullableType( field.Declaration.Type ) :
+                                            field.Declaration.Type
+                                        )
+                                        .WithDefault(
+                                            SF.EqualsValueClause(
+                                                SF.Token( SyntaxKind.EqualsToken ),
+                                                SF.LiteralExpression( SyntaxKind.NullLiteralExpression ) ) );
+                            } ) ) );
 
             var withMethodBodyStatements =
                 fields.Select(

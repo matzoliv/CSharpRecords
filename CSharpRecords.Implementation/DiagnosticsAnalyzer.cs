@@ -13,7 +13,7 @@ namespace CSharpRecords
     {
         internal static DiagnosticDescriptor ImmutableRecordUpdateDiagnostic =
             new DiagnosticDescriptor(
-                "CSharpRecordsUpdateNecessary",
+                "ImmutableRecordUpdate",
                 "Records constructor and modifiers can be updated",
                 "Records constructor and modifiers can be updated",
                 "Refactoring",
@@ -33,27 +33,31 @@ namespace CSharpRecords
 
         private void Analyze(SymbolAnalysisContext context)
         {
-            var property = context.Symbol as ITypeSymbol;
-
-            if ( property == null )
-                return;
-
-            var classDeclaration = property.DeclaringSyntaxReferences.First().GetSyntax() as ClassDeclarationSyntax;
+            var classDeclaration =
+                ( context.Symbol as ITypeSymbol )
+                ?.DeclaringSyntaxReferences
+                .FirstOrDefault()
+                ?.GetSyntax() as ClassDeclarationSyntax;
 
             if ( classDeclaration == null )
                 return;
 
-            var fields = classDeclaration.Members.OfType<FieldDeclarationSyntax>();
-            var properties = classDeclaration.Members.OfType<PropertyDeclarationSyntax>();
-
-            var allReadonlyFields =
-                fields
-                    .All(
+            var hasAnyNonPublicNonReadonlyFields =
+                classDeclaration.Members
+                    .OfType<FieldDeclarationSyntax>()
+                    .Where(
                         field =>
-                            field.Modifiers.Any( m => m.Kind() == SyntaxKind.ReadOnlyKeyword ) &&
-                            field.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword ) );
+                            !( field.Modifiers.Any( m => m.Kind() == SyntaxKind.ReadOnlyKeyword ) &&
+                               field.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword ) )
+                    )
+                    .Any();
 
-            if ( allReadonlyFields && !properties.Any() )
+            var hasAnyProperties =
+                classDeclaration.Members
+                    .OfType<PropertyDeclarationSyntax>()
+                    .Any();
+
+            if ( !hasAnyNonPublicNonReadonlyFields && !hasAnyProperties )
             {
                 context.ReportDiagnostic( Diagnostic.Create( ImmutableRecordUpdateDiagnostic, classDeclaration.GetLocation() ) );
             }
