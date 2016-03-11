@@ -42,22 +42,25 @@ namespace CSharpRecords
             if ( classDeclaration == null )
                 return;
 
-            var hasAnyNonPublicNonReadonlyFields =
+            var areAllFieldsPublicReadonly =
                 classDeclaration.Members
                     .OfType<FieldDeclarationSyntax>()
-                    .Where(
+                    .All(
                         field =>
-                            !( field.Modifiers.Any( m => m.Kind() == SyntaxKind.ReadOnlyKeyword ) &&
-                               field.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword ) )
-                    )
-                    .Any();
+                            field.Modifiers.Any( m => m.Kind() == SyntaxKind.ReadOnlyKeyword ) &&
+                            field.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword )
+                    );
 
-            var hasAnyProperties =
+            var areAllPropertiesPublicReadonly =
                 classDeclaration.Members
                     .OfType<PropertyDeclarationSyntax>()
-                    .Any();
+                    .All(
+                        property =>
+                            property.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword ) &&
+                            property.AccessorList.Accessors.All( x => x.Kind() == SyntaxKind.GetAccessorDeclaration && x.Body == null )
+                    );
 
-            if ( !hasAnyNonPublicNonReadonlyFields && !hasAnyProperties )
+            if ( areAllFieldsPublicReadonly && areAllPropertiesPublicReadonly )
             {
                 context.ReportDiagnostic( Diagnostic.Create( ImmutableRecordUpdateDiagnostic, classDeclaration.GetLocation() ) );
             }

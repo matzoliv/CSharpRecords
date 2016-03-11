@@ -16,6 +16,54 @@ using Microsoft.CodeAnalysis.CSharp;
 
 namespace CSharpRecords
 {
+    public class Field
+    {
+        public string Name { get; }
+        public TypeSyntax Type { get; }
+
+        public Field( string Name, TypeSyntax Type )
+        {
+            this.Name = Name;
+            this.Type = Type;
+        }
+
+        public Field With( string Name = null, TypeSyntax Type = null )
+        {
+            return new Field( Name ?? this.Name, Type ?? this.Type );
+        }
+
+        public static Field MaybeConvertFromMember( MemberDeclarationSyntax member )
+        {
+            var fieldDeclarationSyntax = member as FieldDeclarationSyntax;
+            if ( fieldDeclarationSyntax != null )
+            {
+                if ( fieldDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.ReadOnlyKeyword ) &&
+                     fieldDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword ) &&
+                     fieldDeclarationSyntax.Declaration.Variables.Any() )
+                {
+                    return new Field(
+                        fieldDeclarationSyntax.Declaration.Variables.First().Identifier.ValueText,
+                        fieldDeclarationSyntax.Declaration.Type
+                    );
+                }
+            }
+
+            var propertyDeclarationSyntax = member as PropertyDeclarationSyntax;
+            if ( propertyDeclarationSyntax != null )
+            {
+                if ( propertyDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword ) )
+                {
+                    return new Field(
+                        propertyDeclarationSyntax.Identifier.ValueText,
+                        propertyDeclarationSyntax.Type
+                    );
+                }
+            }
+
+            return null;
+        }
+    }
+
     [ExportCodeFixProvider( LanguageNames.CSharp, Name = nameof( CSharpRecordsCodeFixProvider ) ), Shared]
     public class CSharpRecordsCodeFixProvider : CodeFixProvider
     {
@@ -27,7 +75,7 @@ namespace CSharpRecords
             }
         }
 
-        public override async Task RegisterCodeFixesAsync ( CodeFixContext context )
+        public override async Task RegisterCodeFixesAsync( CodeFixContext context )
         {
             var root = await context.Document.GetSyntaxRootAsync( context.CancellationToken ).ConfigureAwait( false );
             var diagnostic = context.Diagnostics.First();
@@ -46,16 +94,14 @@ namespace CSharpRecords
                 diagnostic );
         }
 
-        private async Task<Document> TransformToImmutableRecord ( Document document, ClassDeclarationSyntax typeDeclaration, CancellationToken cancellationToken )
+        private async Task<Document> TransformToImmutableRecord( Document document, ClassDeclarationSyntax typeDeclaration, CancellationToken cancellationToken )
         {
-            var publicReadonlyFields =
+            var applicableFields =
                 typeDeclaration.Members
-                    .OfType<FieldDeclarationSyntax>()
-                    .Where( field => field.Modifiers.Any( m => m.Kind() == SyntaxKind.ReadOnlyKeyword ) )
-                    .Where( field => field.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword ) )
-                    .Where( field => field.Declaration.Variables.Any() );
+                    .Select( member => Field.MaybeConvertFromMember( member ) )
+                    .Where( x => x != null );
 
-            var constructor = MakeConstructor( typeDeclaration.Identifier.Text, publicReadonlyFields );
+            var constructor = MakeConstructor( typeDeclaration.Identifier.Text, applicableFields );
 
             var maybePreviousWithMethod =
                 typeDeclaration.Members
@@ -69,9 +115,9 @@ namespace CSharpRecords
                     .Where( param => param.Type is NullableTypeSyntax )
                     .Select( param => param.Identifier.ValueText )
                     .ToImmutableHashSet()
-                    ?? ImmutableHashSet<string>.Empty;        
+                    ?? ImmutableHashSet<string>.Empty;
 
-            var withMethod = MakeWithMethod( typeDeclaration.Identifier.Text, publicReadonlyFields, knownNullableTypeParameterNames );
+            var withMethod = MakeWithMethod( typeDeclaration.Identifier.Text, applicableFields, knownNullableTypeParameterNames );
 
             var root = await document.GetSyntaxRootAsync( cancellationToken ).ConfigureAwait( false ) as CompilationUnitSyntax;
 
@@ -101,27 +147,50 @@ namespace CSharpRecords
             return document;
         }
 
-        private MethodDeclarationSyntax MakeWithMethod ( string className, IEnumerable<FieldDeclarationSyntax> fields, ImmutableHashSet<string> knownNullableTypeParameterNames )
+        private static HashSet<SyntaxKind> NonNullablePredefinedTypes =
+            new HashSet<SyntaxKind>( new[] { SyntaxKind.SByteKeyword, SyntaxKind.ShortKeyword, SyntaxKind.IntKeyword, SyntaxKind.ByteKeyword,
+                                             SyntaxKind.UShortKeyword, SyntaxKind.UIntKeyword, SyntaxKind.ULongKeyword, SyntaxKind.FloatKeyword,
+                                             SyntaxKind.DoubleKeyword, SyntaxKind.BoolKeyword, SyntaxKind.CharKeyword, SyntaxKind.DecimalKeyword } );
+
+        private static HashSet<string> NonNullableTypeName =
+            new HashSet<string>( new[] { "Guid", "System.Guid", "DateTime", "System.DateTime" } );
+
+        private static bool IsNonNullable( TypeSyntax type )
+        {
+            var predefinedTypeSyntax = type as PredefinedTypeSyntax;
+
+            if ( predefinedTypeSyntax != null )
+            {
+                return NonNullablePredefinedTypes.Contains( predefinedTypeSyntax.Keyword.Kind() );
+            }
+
+            var typeIdentifierNameSyntax = type as IdentifierNameSyntax;
+            
+            if ( typeIdentifierNameSyntax != null )
+            {
+                return NonNullableTypeName.Contains( typeIdentifierNameSyntax.Identifier.ValueText );
+            }
+
+            return false;
+        }
+
+        private MethodDeclarationSyntax MakeWithMethod ( string className, IEnumerable<Field> fields, ImmutableHashSet<string> knownNullableTypeParameterNames )
         {
             var withMethodParameters =
                 SF.ParameterList(
                     SF.SeparatedList(
                         fields.Select(
                             field =>
-                            {
-                                var parameterIdentifier = field.Declaration.Variables.First().Identifier;
-                                return
-                                    SF.Parameter( parameterIdentifier )
-                                        .WithType(
-                                            knownNullableTypeParameterNames.Contains( parameterIdentifier.ValueText ) ?
-                                            SF.NullableType( field.Declaration.Type ) :
-                                            field.Declaration.Type
-                                        )
-                                        .WithDefault(
-                                            SF.EqualsValueClause(
-                                                SF.Token( SyntaxKind.EqualsToken ),
-                                                SF.LiteralExpression( SyntaxKind.NullLiteralExpression ) ) );
-                            } ) ) );
+                                SF.Parameter( SF.Identifier( field.Name ) )
+                                    .WithType(
+                                        knownNullableTypeParameterNames.Contains( field.Name ) || IsNonNullable( field.Type ) ?
+                                        SF.NullableType( field.Type ) :
+                                        field.Type
+                                    )
+                                    .WithDefault(
+                                        SF.EqualsValueClause(
+                                            SF.Token( SyntaxKind.EqualsToken ),
+                                            SF.LiteralExpression( SyntaxKind.NullLiteralExpression ) ) ) ) ) );
 
             var withMethodBodyStatements =
                 fields.Select(
@@ -129,11 +198,11 @@ namespace CSharpRecords
                         SF.Argument(
                             SF.BinaryExpression(
                                 SyntaxKind.CoalesceExpression,
-                                SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ),
+                                SF.IdentifierName( field.Name ),
                                 SF.MemberAccessExpression(
                                     SyntaxKind.SimpleMemberAccessExpression,
                                     SF.ThisExpression(),
-                                    SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ) ) ) ) );
+                                    SF.IdentifierName( field.Name ) ) ) ) );
 
             return
                 SF.MethodDeclaration(
@@ -151,14 +220,14 @@ namespace CSharpRecords
                                 null ) ) ) );
         }
 
-        private ConstructorDeclarationSyntax MakeConstructor ( string className, IEnumerable<FieldDeclarationSyntax> fields )
+        private ConstructorDeclarationSyntax MakeConstructor ( string className, IEnumerable<Field> fields )
         {
             var constructorParameters =
                 SF.ParameterList(
                     SF.SeparatedList(
                         fields.Select( field =>
-                            SF.Parameter( field.Declaration.Variables.First().Identifier )
-                                .WithType( field.Declaration.Type ) ) ) );
+                            SF.Parameter( SF.Identifier( field.Name ) )
+                                .WithType( field.Type ) ) ) );
 
             var constructorBodyStatements =
                 fields.Select(
@@ -169,9 +238,9 @@ namespace CSharpRecords
                                 SF.MemberAccessExpression(
                                     SyntaxKind.SimpleMemberAccessExpression,
                                     SF.ThisExpression(),
-                                    SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText )
+                                    SF.IdentifierName( field.Name )
                                 ),
-                                SF.IdentifierName( field.Declaration.Variables.First().Identifier.ValueText ) ) ) );
+                                SF.IdentifierName( field.Name ) ) ) );
 
             return
                 SF.ConstructorDeclaration( className )
