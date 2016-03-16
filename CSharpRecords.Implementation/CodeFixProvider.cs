@@ -1,4 +1,4 @@
-﻿using System;
+﻿ using System;
 using System.Composition;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,16 +20,46 @@ namespace CSharpRecords
     {
         public string Name { get; }
         public TypeSyntax Type { get; }
+        public bool IsNonNullable { get; }
 
-        public Field( string Name, TypeSyntax Type )
+        public Field( string Name, TypeSyntax Type, bool IsNonNullable )
         {
             this.Name = Name;
             this.Type = Type;
+            this.IsNonNullable = IsNonNullable;
         }
 
-        public Field With( string Name = null, TypeSyntax Type = null )
+        public Field With( string Name = null, TypeSyntax Type = null, bool? IsNonNullable = null )
         {
-            return new Field( Name ?? this.Name, Type ?? this.Type );
+            return new Field( Name ?? this.Name, Type ?? this.Type, IsNonNullable ?? this.IsNonNullable );
+        }
+
+
+        private static HashSet<SyntaxKind> NonNullablePredefinedTypes =
+            new HashSet<SyntaxKind>( new[] { SyntaxKind.SByteKeyword, SyntaxKind.ShortKeyword, SyntaxKind.IntKeyword, SyntaxKind.ByteKeyword,
+                                             SyntaxKind.UShortKeyword, SyntaxKind.UIntKeyword, SyntaxKind.ULongKeyword, SyntaxKind.FloatKeyword,
+                                             SyntaxKind.DoubleKeyword, SyntaxKind.BoolKeyword, SyntaxKind.CharKeyword, SyntaxKind.DecimalKeyword } );
+
+        private static HashSet<string> NonNullableTypeName =
+            new HashSet<string>( new[] { "Guid", "System.Guid", "DateTime", "System.DateTime" } );
+
+        public static bool IsTypeSyntaxNonNullable ( TypeSyntax type )
+        {
+            var predefinedTypeSyntax = type as PredefinedTypeSyntax;
+
+            if ( predefinedTypeSyntax != null )
+            {
+                return NonNullablePredefinedTypes.Contains( predefinedTypeSyntax.Keyword.Kind() );
+            }
+
+            var typeIdentifierNameSyntax = type as IdentifierNameSyntax;
+
+            if ( typeIdentifierNameSyntax != null )
+            {
+                return NonNullableTypeName.Contains( typeIdentifierNameSyntax.Identifier.ValueText );
+            }
+
+            return false;
         }
 
         public static Field MaybeConvertFromMember( MemberDeclarationSyntax member )
@@ -43,7 +73,8 @@ namespace CSharpRecords
                 {
                     return new Field(
                         fieldDeclarationSyntax.Declaration.Variables.First().Identifier.ValueText,
-                        fieldDeclarationSyntax.Declaration.Type
+                        fieldDeclarationSyntax.Declaration.Type,
+                        IsTypeSyntaxNonNullable( fieldDeclarationSyntax.Declaration.Type )
                     );
                 }
             }
@@ -55,7 +86,8 @@ namespace CSharpRecords
                 {
                     return new Field(
                         propertyDeclarationSyntax.Identifier.ValueText,
-                        propertyDeclarationSyntax.Type
+                        propertyDeclarationSyntax.Type,
+                        IsTypeSyntaxNonNullable( propertyDeclarationSyntax.Type )
                     );
                 }
             }
@@ -75,7 +107,7 @@ namespace CSharpRecords
             }
         }
 
-        public override async Task RegisterCodeFixesAsync( CodeFixContext context )
+        public override async Task RegisterCodeFixesAsync ( CodeFixContext context )
         {
             var root = await context.Document.GetSyntaxRootAsync( context.CancellationToken ).ConfigureAwait( false );
             var diagnostic = context.Diagnostics.First();
@@ -94,87 +126,7 @@ namespace CSharpRecords
                 diagnostic );
         }
 
-        private async Task<Document> TransformToImmutableRecord( Document document, ClassDeclarationSyntax typeDeclaration, CancellationToken cancellationToken )
-        {
-            var applicableFields =
-                typeDeclaration.Members
-                    .Select( member => Field.MaybeConvertFromMember( member ) )
-                    .Where( x => x != null );
-
-            var constructor = MakeConstructor( typeDeclaration.Identifier.Text, applicableFields );
-
-            var maybePreviousWithMethod =
-                typeDeclaration.Members
-                    .OfType<MethodDeclarationSyntax>()
-                    .Where( m => m.Identifier.ValueText == "With" )
-                    .FirstOrDefault();
-
-            var knownNullableTypeParameterNames =
-                maybePreviousWithMethod
-                    ?.ParameterList.Parameters
-                    .Where( param => param.Type is NullableTypeSyntax )
-                    .Select( param => param.Identifier.ValueText )
-                    .ToImmutableHashSet()
-                    ?? ImmutableHashSet<string>.Empty;
-
-            var withMethod = MakeWithMethod( typeDeclaration.Identifier.Text, applicableFields, knownNullableTypeParameterNames );
-
-            var root = await document.GetSyntaxRootAsync( cancellationToken ).ConfigureAwait( false ) as CompilationUnitSyntax;
-
-            var maybePreviousConstructor =
-                typeDeclaration.Members
-                    .OfType<ConstructorDeclarationSyntax>()
-                    .FirstOrDefault();
-
-            var typeDeclarationWithConstructor =
-                maybePreviousConstructor == null ?
-                typeDeclaration.AddMembers( constructor ) :
-                typeDeclaration.ReplaceNode( maybePreviousConstructor, constructor );
-
-            maybePreviousWithMethod =
-                typeDeclarationWithConstructor.Members
-                    .OfType<MethodDeclarationSyntax>()
-                    .Where( m => m.Identifier.ValueText == "With" )
-                    .FirstOrDefault();
-
-            var newTypeDeclaration =
-                maybePreviousWithMethod == null ?
-                typeDeclarationWithConstructor.AddMembers( withMethod ) :
-                typeDeclarationWithConstructor.ReplaceNode( maybePreviousWithMethod, withMethod );
-
-            var newRoot = root.ReplaceNode( typeDeclaration, newTypeDeclaration );
-            document = document.WithSyntaxRoot( newRoot );
-            return document;
-        }
-
-        private static HashSet<SyntaxKind> NonNullablePredefinedTypes =
-            new HashSet<SyntaxKind>( new[] { SyntaxKind.SByteKeyword, SyntaxKind.ShortKeyword, SyntaxKind.IntKeyword, SyntaxKind.ByteKeyword,
-                                             SyntaxKind.UShortKeyword, SyntaxKind.UIntKeyword, SyntaxKind.ULongKeyword, SyntaxKind.FloatKeyword,
-                                             SyntaxKind.DoubleKeyword, SyntaxKind.BoolKeyword, SyntaxKind.CharKeyword, SyntaxKind.DecimalKeyword } );
-
-        private static HashSet<string> NonNullableTypeName =
-            new HashSet<string>( new[] { "Guid", "System.Guid", "DateTime", "System.DateTime" } );
-
-        private static bool IsNonNullable( TypeSyntax type )
-        {
-            var predefinedTypeSyntax = type as PredefinedTypeSyntax;
-
-            if ( predefinedTypeSyntax != null )
-            {
-                return NonNullablePredefinedTypes.Contains( predefinedTypeSyntax.Keyword.Kind() );
-            }
-
-            var typeIdentifierNameSyntax = type as IdentifierNameSyntax;
-            
-            if ( typeIdentifierNameSyntax != null )
-            {
-                return NonNullableTypeName.Contains( typeIdentifierNameSyntax.Identifier.ValueText );
-            }
-
-            return false;
-        }
-
-        private MethodDeclarationSyntax MakeWithMethod ( string className, IEnumerable<Field> fields, ImmutableHashSet<string> knownNullableTypeParameterNames )
+        public static MethodDeclarationSyntax MakeWithMethod ( string className, IEnumerable<Field> fields )
         {
             var withMethodParameters =
                 SF.ParameterList(
@@ -183,9 +135,7 @@ namespace CSharpRecords
                             field =>
                                 SF.Parameter( SF.Identifier( field.Name ) )
                                     .WithType(
-                                        knownNullableTypeParameterNames.Contains( field.Name ) || IsNonNullable( field.Type ) ?
-                                        SF.NullableType( field.Type ) :
-                                        field.Type
+                                        field.IsNonNullable ? SF.NullableType( field.Type ) : field.Type
                                     )
                                     .WithDefault(
                                         SF.EqualsValueClause(
@@ -220,7 +170,7 @@ namespace CSharpRecords
                                 null ) ) ) );
         }
 
-        private ConstructorDeclarationSyntax MakeConstructor ( string className, IEnumerable<Field> fields )
+        public static ConstructorDeclarationSyntax MakeConstructor ( string className, IEnumerable<Field> fields )
         {
             var constructorParameters =
                 SF.ParameterList(
@@ -247,6 +197,75 @@ namespace CSharpRecords
                     .WithModifiers( SF.TokenList( new[] { SF.Token( SyntaxKind.PublicKeyword ) } ) )
                     .WithParameterList( constructorParameters )
                     .WithBody( SF.Block( constructorBodyStatements ) );
+        }
+
+        public static ClassDeclarationSyntax UpdateOrAddConstructor ( ClassDeclarationSyntax classDeclaration, IEnumerable<Field> fields )
+        {
+            var constructor = MakeConstructor( classDeclaration.Identifier.Text, fields );
+
+            var maybePreviousConstructor =
+                classDeclaration.Members
+                    .OfType<ConstructorDeclarationSyntax>()
+                    .FirstOrDefault();
+
+            return
+                maybePreviousConstructor == null ?
+                classDeclaration.AddMembers( constructor ) :
+                classDeclaration.ReplaceNode( maybePreviousConstructor, constructor );
+        }
+
+        public static ClassDeclarationSyntax UpdateOrAddWithMethod ( ClassDeclarationSyntax classDeclaration, IEnumerable<Field> fields )
+        {
+            var withMethod = MakeWithMethod( classDeclaration.Identifier.Text, fields );
+
+            var maybePreviousWithMethod =
+                classDeclaration.Members
+                    .OfType<MethodDeclarationSyntax>()
+                    .Where( m => m.Identifier.ValueText == "With" )
+                    .FirstOrDefault();
+
+            return
+                maybePreviousWithMethod == null ?
+                classDeclaration.AddMembers( withMethod ) :
+                classDeclaration.ReplaceNode( maybePreviousWithMethod, withMethod );
+        }
+
+        public static IEnumerable<Field> GetApplicableFields ( ClassDeclarationSyntax classDeclaration )
+        {
+            var maybePreviousWithMethod =
+                classDeclaration.Members
+                    .OfType<MethodDeclarationSyntax>()
+                    .Where( m => m.Identifier.ValueText == "With" )
+                    .FirstOrDefault();
+
+            var knownNullableTypeParameterNames =
+                maybePreviousWithMethod
+                    ?.ParameterList.Parameters
+                    .Where( param => param.Type is NullableTypeSyntax )
+                    .Select( param => param.Identifier.ValueText )
+                    .ToImmutableHashSet()
+                    ?? ImmutableHashSet<string>.Empty;
+
+            return
+                classDeclaration.Members
+                    .Select( member => Field.MaybeConvertFromMember( member ) )
+                    .Where( x => x != null )
+                    .Select( field => knownNullableTypeParameterNames.Contains( field.Name ) ? field.With( IsNonNullable: true ) : field )
+                    .ToList();
+        }
+
+        public static ClassDeclarationSyntax ApplyCodeFix( ClassDeclarationSyntax classDeclaration )
+        {
+            var applicableFields = GetApplicableFields( classDeclaration );
+            return UpdateOrAddWithMethod( UpdateOrAddConstructor( classDeclaration, applicableFields ), applicableFields );
+        }
+
+        private async Task<Document> TransformToImmutableRecord ( Document document, ClassDeclarationSyntax classDeclaration, CancellationToken cancellationToken )
+        {
+            var root = await document.GetSyntaxRootAsync( cancellationToken ).ConfigureAwait( false ) as CompilationUnitSyntax;
+            var newRoot = root.ReplaceNode( classDeclaration, ApplyCodeFix( classDeclaration ) );
+            document = document.WithSyntaxRoot( newRoot );
+            return document;
         }
     }
 }

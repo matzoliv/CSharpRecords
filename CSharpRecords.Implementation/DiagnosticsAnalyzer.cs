@@ -31,16 +31,17 @@ namespace CSharpRecords
             context.RegisterSymbolAction( Analyze, SymbolKind.NamedType );
         }
 
-        private void Analyze(SymbolAnalysisContext context)
+        public static bool IsClassEligible( ClassDeclarationSyntax classDeclaration )
         {
-            var classDeclaration =
-                ( context.Symbol as ITypeSymbol )
-                ?.DeclaringSyntaxReferences
-                .FirstOrDefault()
-                ?.GetSyntax() as ClassDeclarationSyntax;
+            var atLeastOneField =
+                classDeclaration.Members
+                    .OfType<FieldDeclarationSyntax>()
+                    .Any();
 
-            if ( classDeclaration == null )
-                return;
+            var atLeastOneProperty =
+                classDeclaration.Members
+                    .OfType<PropertyDeclarationSyntax>()
+                    .Any();
 
             var areAllFieldsPublicReadonly =
                 classDeclaration.Members
@@ -60,7 +61,21 @@ namespace CSharpRecords
                             property.AccessorList.Accessors.All( x => x.Kind() == SyntaxKind.GetAccessorDeclaration && x.Body == null )
                     );
 
-            if ( areAllFieldsPublicReadonly && areAllPropertiesPublicReadonly )
+            return ( atLeastOneField || atLeastOneProperty ) && areAllFieldsPublicReadonly && areAllPropertiesPublicReadonly;
+        }
+
+        private void Analyze(SymbolAnalysisContext context)
+        {
+            var classDeclaration =
+                ( context.Symbol as ITypeSymbol )
+                ?.DeclaringSyntaxReferences
+                .FirstOrDefault()
+                ?.GetSyntax() as ClassDeclarationSyntax;
+
+            if ( classDeclaration == null )
+                return;
+
+            if ( IsClassEligible( classDeclaration ) )
             {
                 context.ReportDiagnostic( Diagnostic.Create( ImmutableRecordUpdateDiagnostic, classDeclaration.GetLocation() ) );
             }
