@@ -1,3 +1,5 @@
+# C# Records
+
 This Visual Studio extension will propose a code fix on classes that use public readonly fields or properties. Applying this code fix will generate or update both the constructor, and a F# inspired "With" update method.
 
 ```C#
