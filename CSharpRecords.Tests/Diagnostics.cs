@@ -107,5 +107,22 @@ public class Foo
 
             AssertEligible( eligible: true, ast: ast );
         }
+
+        [TestMethod]
+        public void StaticFieldsOrPropertiesIsEligible ()
+        {
+            var ast =
+@"
+public class Foo
+{
+    public string Bar { get; }
+    public int Dummy { get; }
+
+    public static int Static1;
+    public static int StaticTest2;
+}";
+
+            AssertEligible( eligible: true, ast: ast );
+        }
     }
 }

@@ -43,25 +43,27 @@ namespace CSharpRecords
                     .OfType<PropertyDeclarationSyntax>()
                     .Any();
 
-            var areAllFieldsPublicReadonly =
+            var areAllNonStaticFieldsPublicReadonly =
                 classDeclaration.Members
                     .OfType<FieldDeclarationSyntax>()
+                    .Where( field => !field.Modifiers.Any( m => m.Kind() == SyntaxKind.StaticKeyword ) )
                     .All(
                         field =>
                             field.Modifiers.Any( m => m.Kind() == SyntaxKind.ReadOnlyKeyword ) &&
                             field.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword )
                     );
 
-            var areAllPropertiesPublicReadonly =
+            var areAllNonStaticPropertiesPublicReadonly =
                 classDeclaration.Members
                     .OfType<PropertyDeclarationSyntax>()
+                    .Where( property => !property.Modifiers.Any( m => m.Kind() == SyntaxKind.StaticKeyword ) )
                     .All(
                         property =>
                             property.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword ) &&
                             property.AccessorList.Accessors.All( x => x.Kind() == SyntaxKind.GetAccessorDeclaration && x.Body == null )
                     );
 
-            return ( atLeastOneField || atLeastOneProperty ) && areAllFieldsPublicReadonly && areAllPropertiesPublicReadonly;
+            return ( atLeastOneField || atLeastOneProperty ) && areAllNonStaticFieldsPublicReadonly && areAllNonStaticPropertiesPublicReadonly;
         }
 
         private void Analyze(SymbolAnalysisContext context)

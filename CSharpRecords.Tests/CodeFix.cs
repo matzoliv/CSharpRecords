@@ -29,7 +29,7 @@ namespace CSharpRecords.Tests
             var expectedClassPostCodeFix = rootExpectedPostCodeFix.ChildNodes().OfType<ClassDeclarationSyntax>().First();
             var astPostCodeFixFormattedStr = Formatter.Format( expectedClassPostCodeFix, workspace ).ToFullString();
 
-            Assert.AreEqual( astPreCodeFixFormattedStr, astPostCodeFixFormattedStr );
+            Assert.AreEqual( astPostCodeFixFormattedStr, astPreCodeFixFormattedStr );
         }
 
         [TestMethod]
@@ -131,6 +131,66 @@ public class Foo
     public string Bar { get; }
     public SomeStruct Something { get; }
     public int N { get; }
+
+    public Foo(string Bar, SomeStruct Something, int N)
+    {
+        this.Bar = Bar;
+        this.Something = Something;
+        this.N = N;
+    }
+
+    public Foo With(string Bar = null, SomeStruct? Something = null, int? N = null)
+    {
+        return new Foo(Bar ?? this.Bar, Something ?? this.Something, N ?? this.N);
+    }
+}
+";
+            AssertCodeFixTransformsTo( before, after );
+        }
+
+        [TestMethod]
+        public void StaticFieldsAndMethodsAreLeftUntouched ()
+        {
+            var before =
+@"
+public class Foo
+{
+    public string Bar { get; }
+    public SomeStruct Something { get; }
+    public int N { get; }
+    public static Foo Empty = new Foo("""", SomeStruct.Empty);
+    public static int Test { get { return 10; } }
+    public static MakeEmpty()
+    {
+        return new Foo("""", SomeStruct.Empty);
+    }
+
+    public Foo(string Bar, SomeStruct Something)
+    {
+        this.Bar = Bar;
+        this.Something = Something;
+    }
+
+    public Foo With(string Bar = null, SomeStruct? Something = null)
+    {
+        return new Foo(Bar ?? this.Bar, Something ?? this.Something);
+    }
+}
+";
+
+            var after =
+@"
+public class Foo
+{
+    public string Bar { get; }
+    public SomeStruct Something { get; }
+    public int N { get; }
+    public static Foo Empty = new Foo("""", SomeStruct.Empty);
+    public static int Test { get { return 10; } }
+    public static MakeEmpty()
+    {
+        return new Foo("""", SomeStruct.Empty);
+    }
 
     public Foo(string Bar, SomeStruct Something, int N)
     {

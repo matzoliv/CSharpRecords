@@ -67,7 +67,8 @@ namespace CSharpRecords
             var fieldDeclarationSyntax = member as FieldDeclarationSyntax;
             if ( fieldDeclarationSyntax != null )
             {
-                if ( fieldDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.ReadOnlyKeyword ) &&
+                if ( !fieldDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.StaticKeyword ) &&
+                     fieldDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.ReadOnlyKeyword ) &&
                      fieldDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword ) &&
                      fieldDeclarationSyntax.Declaration.Variables.Any() )
                 {
@@ -82,7 +83,8 @@ namespace CSharpRecords
             var propertyDeclarationSyntax = member as PropertyDeclarationSyntax;
             if ( propertyDeclarationSyntax != null )
             {
-                if ( propertyDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword ) )
+                if ( !propertyDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.StaticKeyword ) &&
+                     propertyDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword ) )
                 {
                     return new Field(
                         propertyDeclarationSyntax.Identifier.ValueText,
