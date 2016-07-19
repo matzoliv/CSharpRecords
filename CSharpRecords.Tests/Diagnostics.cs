@@ -16,7 +16,7 @@ namespace CSharpRecords.Tests
 
             var root = ( CompilationUnitSyntax )tree.GetRoot();
 
-            Assert.AreEqual( CSharpRecordsDiagnosticsAnalyzer.IsClassEligible( root.ChildNodes().OfType<ClassDeclarationSyntax>().First() ), eligible );
+            Assert.AreEqual( eligible, CSharpRecordsDiagnosticsAnalyzer.IsClassEligible( root.ChildNodes().OfType<ClassDeclarationSyntax>().First() ) );
         }
 
         [TestMethod]
@@ -120,6 +120,58 @@ public class Foo
 
     public static int Static1;
     public static int StaticTest2;
+}";
+
+            AssertEligible( eligible: true, ast: ast );
+        }
+
+        [TestMethod]
+        public void PropertiesNoModifiers()
+        {
+            var ast =
+@"
+public class Foo
+{
+    string Bar { get; }
+}";
+
+            AssertEligible( eligible: false, ast: ast );
+        }
+
+        [TestMethod]
+        public void PrivateFieldWithInitialValue()
+        {
+            var ast =
+@"
+public class Foo
+{
+    private int m_timesEntityQueriesBeforeInitialized = 0;
+}";
+
+            AssertEligible( eligible: false, ast: ast );
+        }
+
+        [TestMethod]
+        public void CSharp6GetBodyShortcutSyntax()
+        {
+            var ast =
+@"
+public class Foo
+{
+    public IEnumerable<Guid> Doors => m_externalEntityStateSource.AllEntityGuids;
+}";
+
+            AssertEligible( eligible: true, ast: ast );
+        }
+
+        [TestMethod]
+        public void PropertiesGetWithBody()
+        {
+            var ast =
+@"
+public class Foo
+{
+    public string Bar { get { return ""foobar""; } }
 }";
 
             AssertEligible( eligible: true, ast: ast );
