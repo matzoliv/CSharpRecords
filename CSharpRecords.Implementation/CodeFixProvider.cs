@@ -1,5 +1,4 @@
-﻿ using System;
-using System.Composition;
+﻿using System.Composition;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -83,7 +82,9 @@ namespace CSharpRecords
             var propertyDeclarationSyntax = member as PropertyDeclarationSyntax;
             if ( propertyDeclarationSyntax != null )
             {
-                if ( !propertyDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.StaticKeyword ) &&
+                if ( propertyDeclarationSyntax.AccessorList != null && // Expression Bodied properties
+                     propertyDeclarationSyntax.AccessorList.Accessors.All( x => x.Body == null ) &&
+                     !propertyDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.StaticKeyword ) &&
                      propertyDeclarationSyntax.Modifiers.Any( m => m.Kind() == SyntaxKind.PublicKeyword ) )
                 {
                     return new Field(

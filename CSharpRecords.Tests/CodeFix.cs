@@ -22,14 +22,14 @@ namespace CSharpRecords.Tests
             var classPreCodeFix = rootPreCodeFix.ChildNodes().OfType<ClassDeclarationSyntax>().First();
 
             var classPostCodeFix = CSharpRecordsCodeFixProvider.ApplyCodeFix( classPreCodeFix );
-            var astPreCodeFixFormattedStr = Formatter.Format( classPostCodeFix, workspace ).ToFullString();
+            var astPostCodeFixFormattedStr = Formatter.Format( classPostCodeFix, workspace ).ToFullString();
 
             SyntaxTree astExpectedPostCodeFix = CSharpSyntaxTree.ParseText( expectedPostCodeFix );
             var rootExpectedPostCodeFix = ( CompilationUnitSyntax )astExpectedPostCodeFix.GetRoot();
             var expectedClassPostCodeFix = rootExpectedPostCodeFix.ChildNodes().OfType<ClassDeclarationSyntax>().First();
-            var astPostCodeFixFormattedStr = Formatter.Format( expectedClassPostCodeFix, workspace ).ToFullString();
+            var astExpectedPostCodeFixFormattedStr = Formatter.Format( expectedClassPostCodeFix, workspace ).ToFullString();
 
-            Assert.AreEqual( astPostCodeFixFormattedStr, astPreCodeFixFormattedStr );
+            Assert.AreEqual( astExpectedPostCodeFixFormattedStr, astPostCodeFixFormattedStr );
         }
 
         [TestMethod]
@@ -202,6 +202,72 @@ public class Foo
     public Foo With(string Bar = null, SomeStruct? Something = null, int? N = null)
     {
         return new Foo(Bar ?? this.Bar, Something ?? this.Something, N ?? this.N);
+    }
+}
+";
+            AssertCodeFixTransformsTo( before, after );
+        }
+
+        [TestMethod]
+        public void GetWithBodyIsIgnored()
+        {
+            var before =
+@"
+internal class Foo
+{
+    public readonly int A;
+    public int DeuxA { get { return 2 * A; } }
+}
+";
+
+            var after =
+@"
+internal class Foo
+{
+    public readonly int A;
+    public int DeuxA { get { return 2 * A; } }
+
+    public Foo(int A)
+    {
+        this.A = A;
+    }
+
+    public Foo With(int? A = null)
+    {
+        return new Foo(A ?? this.A);
+    }
+}
+";
+            AssertCodeFixTransformsTo( before, after );
+        }
+
+        [TestMethod]
+        public void ExpressionBodiedNotation()
+        {
+            var before =
+@"
+internal class Foo
+{
+    public readonly int A;
+    public int DeuxA => 2 * A;
+}
+";
+
+            var after =
+@"
+internal class Foo
+{
+    public readonly int A;
+    public int DeuxA => 2 * A;
+
+    public Foo(int A)
+    {
+        this.A = A;
+    }
+
+    public Foo With(int? A = null)
+    {
+        return new Foo(A ?? this.A);
     }
 }
 ";
