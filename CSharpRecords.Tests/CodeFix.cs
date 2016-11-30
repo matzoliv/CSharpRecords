@@ -13,7 +13,7 @@ namespace CSharpRecords.Tests
     [TestClass]
     public class CodeFix
     {
-        public void AssertCodeFixTransformsTo ( string preCodeFix, string expectedPostCodeFix )
+        public void AssertCodeFixTransformsTo ( string preCodeFix, string expectedPostCodeFix, Func<ClassDeclarationSyntax, ClassDeclarationSyntax> fixCode )
         {
             var workspace = MSBuildWorkspace.Create();
 
@@ -21,7 +21,7 @@ namespace CSharpRecords.Tests
             var rootPreCodeFix = ( CompilationUnitSyntax )astPreCodeFix.GetRoot();
             var classPreCodeFix = rootPreCodeFix.ChildNodes().OfType<ClassDeclarationSyntax>().First();
 
-            var classPostCodeFix = CSharpRecordsCodeFixProvider.ApplyCodeFix( classPreCodeFix );
+            var classPostCodeFix = fixCode( classPreCodeFix );
             var astPostCodeFixFormattedStr = Formatter.Format( classPostCodeFix, workspace ).ToFullString();
 
             SyntaxTree astExpectedPostCodeFix = CSharpSyntaxTree.ParseText( expectedPostCodeFix );
@@ -30,6 +30,16 @@ namespace CSharpRecords.Tests
             var astExpectedPostCodeFixFormattedStr = Formatter.Format( expectedClassPostCodeFix, workspace ).ToFullString();
 
             Assert.AreEqual( astExpectedPostCodeFixFormattedStr, astPostCodeFixFormattedStr );
+        }
+
+        public void AssertUpdateConstructorAndWithMethodTransformsTo ( string preCodeFix, string expectedPostCodeFix )
+        {
+            AssertCodeFixTransformsTo( preCodeFix, expectedPostCodeFix, CSharpRecordsCodeFixProvider.UpdateConstructorAndWithMethod );
+        }
+
+        public void AssertUpdateConstructorTransformsTo ( string preCodeFix, string expectedPostCodeFix )
+        {
+            AssertCodeFixTransformsTo( preCodeFix, expectedPostCodeFix, CSharpRecordsCodeFixProvider.UpdateConstructor );
         }
 
         [TestMethod]
@@ -60,7 +70,33 @@ public class Foo
     }
 }
 ";
-            AssertCodeFixTransformsTo( before, after );
+            AssertUpdateConstructorAndWithMethodTransformsTo( before, after );
+        }
+
+        [TestMethod]
+        public void SimpleSinglePropertyConstructorOnly ()
+        {
+            var before =
+@"
+public class Foo
+{
+    public string Bar { get; }
+}
+";
+
+            var after =
+@"
+public class Foo
+{
+    public string Bar { get; }
+
+    public Foo(string Bar)
+    {
+        this.Bar = Bar;
+    }
+}
+";
+            AssertUpdateConstructorTransformsTo( before, after );
         }
 
         [TestMethod]
@@ -97,7 +133,7 @@ public class Foo
     }
 }
 ";
-            AssertCodeFixTransformsTo( before, after );
+            AssertUpdateConstructorAndWithMethodTransformsTo( before, after );
         }
 
         [TestMethod]
@@ -145,7 +181,7 @@ public class Foo
     }
 }
 ";
-            AssertCodeFixTransformsTo( before, after );
+            AssertUpdateConstructorAndWithMethodTransformsTo( before, after );
         }
 
         [TestMethod]
@@ -205,7 +241,7 @@ public class Foo
     }
 }
 ";
-            AssertCodeFixTransformsTo( before, after );
+            AssertUpdateConstructorAndWithMethodTransformsTo( before, after );
         }
 
         [TestMethod]
@@ -238,7 +274,7 @@ internal class Foo
     }
 }
 ";
-            AssertCodeFixTransformsTo( before, after );
+            AssertUpdateConstructorAndWithMethodTransformsTo( before, after );
         }
 
         [TestMethod]
@@ -271,7 +307,7 @@ internal class Foo
     }
 }
 ";
-            AssertCodeFixTransformsTo( before, after );
+            AssertUpdateConstructorAndWithMethodTransformsTo( before, after );
         }
     }
 }

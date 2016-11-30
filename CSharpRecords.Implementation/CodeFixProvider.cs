@@ -12,6 +12,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.CSharp.Extensions;
 using SF = Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 using Microsoft.CodeAnalysis.CSharp;
+using System;
 
 namespace CSharpRecords
 {
@@ -21,18 +22,17 @@ namespace CSharpRecords
         public TypeSyntax Type { get; }
         public bool IsNonNullable { get; }
 
-        public Field( string Name, TypeSyntax Type, bool IsNonNullable )
+        public Field ( string Name, TypeSyntax Type, bool IsNonNullable )
         {
             this.Name = Name;
             this.Type = Type;
             this.IsNonNullable = IsNonNullable;
         }
 
-        public Field With( string Name = null, TypeSyntax Type = null, bool? IsNonNullable = null )
+        public Field With ( string Name = null, TypeSyntax Type = null, bool? IsNonNullable = null )
         {
             return new Field( Name ?? this.Name, Type ?? this.Type, IsNonNullable ?? this.IsNonNullable );
         }
-
 
         private static HashSet<SyntaxKind> NonNullablePredefinedTypes =
             new HashSet<SyntaxKind>( new[] { SyntaxKind.SByteKeyword, SyntaxKind.ShortKeyword, SyntaxKind.IntKeyword, SyntaxKind.ByteKeyword,
@@ -125,7 +125,13 @@ namespace CSharpRecords
             context.RegisterCodeFix(
                 CodeAction.Create(
                     "Update immutable record constructor and modifier method",
-                    c => TransformToImmutableRecord( context.Document, declaration, c ) ),
+                    c => ApplyToClassDeclarationInDocument( context.Document, declaration, c, UpdateConstructorAndWithMethod ) ),
+                diagnostic );
+
+            context.RegisterCodeFix(
+                CodeAction.Create(
+                    "Update immutable record constructor",
+                    c => ApplyToClassDeclarationInDocument( context.Document, declaration, c, UpdateConstructor ) ),
                 diagnostic );
         }
 
@@ -257,16 +263,27 @@ namespace CSharpRecords
                     .ToList();
         }
 
-        public static ClassDeclarationSyntax ApplyCodeFix( ClassDeclarationSyntax classDeclaration )
+        public static ClassDeclarationSyntax UpdateConstructorAndWithMethod( ClassDeclarationSyntax classDeclaration )
         {
             var applicableFields = GetApplicableFields( classDeclaration );
             return UpdateOrAddWithMethod( UpdateOrAddConstructor( classDeclaration, applicableFields ), applicableFields );
         }
 
-        private async Task<Document> TransformToImmutableRecord ( Document document, ClassDeclarationSyntax classDeclaration, CancellationToken cancellationToken )
+        public static ClassDeclarationSyntax UpdateConstructor ( ClassDeclarationSyntax classDeclaration )
+        {
+            var applicableFields = GetApplicableFields( classDeclaration );
+            return UpdateOrAddConstructor( classDeclaration, applicableFields );
+        }
+
+        private async Task<Document> ApplyToClassDeclarationInDocument (
+            Document document,
+            ClassDeclarationSyntax classDeclaration,
+            CancellationToken cancellationToken,
+            Func<ClassDeclarationSyntax, ClassDeclarationSyntax> f
+        )
         {
             var root = await document.GetSyntaxRootAsync( cancellationToken ).ConfigureAwait( false ) as CompilationUnitSyntax;
-            var newRoot = root.ReplaceNode( classDeclaration, ApplyCodeFix( classDeclaration ) );
+            var newRoot = root.ReplaceNode( classDeclaration, f( classDeclaration ) );
             document = document.WithSyntaxRoot( newRoot );
             return document;
         }
