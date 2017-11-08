@@ -1,18 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
-  <Metadata>
-    <Identity Id="CSharpRecords.Olivier Matz.398eea09-8830-409e-9c01-2707fec0c182" Version="1.1" Language="en-US" Publisher="Olivier Matz" />
-    <DisplayName>CSharpRecords</DisplayName>
-    <Description xml:space="preserve">Generate a constructor and a F# inspired "with" method for C# immutable records.</Description>
-  </Metadata>
-  <Installation>
-    <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[14.0]" />
-  </Installation>
-  <Dependencies>
-    <Dependency Id="Microsoft.Framework.NDP" DisplayName="Microsoft .NET Framework" d:Source="Manual" Version="[4.5,)" />
-  </Dependencies>
-  <Assets>
-    <Asset Type="Microsoft.VisualStudio.Analyzer" d:Source="Project" d:ProjectName="%CurrentProject%.Implementation" Path="|CSharpRecords.Implementation|" />
-    <Asset Type="Microsoft.VisualStudio.MefComponent" d:Source="Project" d:ProjectName="%CurrentProject%.Implementation" Path="|CSharpRecords.Implementation|" />
-  </Assets>
+    <Metadata>
+        <Identity Id="CSharpRecords.Olivier Matz.398eea09-8830-409e-9c01-2707fec0c182" Version="1.2" Language="en-US" Publisher="Olivier Matz" />
+        <DisplayName>CSharpRecords</DisplayName>
+        <Description xml:space="preserve">Generate a constructor and a F# inspired "with" method for C# immutable records.</Description>
+    </Metadata>
+    <Installation>
+        <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[15.0,16.0)" />
+        <InstallationTarget Version="[15.0,16.0)" Id="Microsoft.VisualStudio.Enterprise" />
+        <InstallationTarget Version="[15.0,16.0)" Id="Microsoft.VisualStudio.Pro" />
+    </Installation>
+    <Dependencies>
+        <Dependency Id="Microsoft.Framework.NDP" DisplayName="Microsoft .NET Framework" d:Source="Manual" Version="[4.5,)" />
+    </Dependencies>
+    <Assets>
+        <Asset Type="Microsoft.VisualStudio.Analyzer" d:Source="Project" d:ProjectName="%CurrentProject%.Implementation" Path="|CSharpRecords.Implementation|" />
+        <Asset Type="Microsoft.VisualStudio.MefComponent" d:Source="Project" d:ProjectName="%CurrentProject%.Implementation" Path="|CSharpRecords.Implementation|" />
+    </Assets>
+    <Prerequisites>
+        <Prerequisite Id="Microsoft.Net.Component.4.6.2.TargetingPack" Version="[15.0.26208.0,16.0)" DisplayName=".NET Framework 4.6.2 targeting pack" />
+    </Prerequisites>
 </PackageManifest>
