@@ -39,8 +39,17 @@ namespace CSharpRecords
                                              SyntaxKind.UShortKeyword, SyntaxKind.UIntKeyword, SyntaxKind.ULongKeyword, SyntaxKind.FloatKeyword,
                                              SyntaxKind.DoubleKeyword, SyntaxKind.BoolKeyword, SyntaxKind.CharKeyword, SyntaxKind.DecimalKeyword } );
 
+        private static string LastComponent( string s ) => s.Split( '.' ).Last();
+
         private static HashSet<string> NonNullableTypeName =
-            new HashSet<string>( new[] { "Guid", "System.Guid", "DateTime", "System.DateTime" } );
+            new HashSet<string>( new[]
+            {
+                "System.Guid",
+                "System.DateTime",
+                "System.TimeSpan"
+            }.SelectMany(
+                fq => new[] { fq, LastComponent( fq ) } ) // expand to {fully-qualified,relative}
+            );
 
         public static bool IsTypeSyntaxNonNullable ( TypeSyntax type )
         {
