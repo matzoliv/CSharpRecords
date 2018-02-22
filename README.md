@@ -21,6 +21,7 @@ public class Foo
     public Foo(string First, int Second)
     {
         this.First = First;
+        this.Second = Second;
     }
 
     public Foo With(string First = null, int? Second)
