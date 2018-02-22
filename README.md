@@ -15,17 +15,17 @@ would be updated to
 ```C#
 public class Foo
 {
-    public string Bar { get; }
+    public string First { get; }
     public int Second { get; }
 
-    public Foo(string Bar, int Second)
+    public Foo(string First, int Second)
     {
-        this.Bar = Bar;
+        this.First = First;
     }
 
-    public Foo With(string Bar = null, int? Second)
+    public Foo With(string First = null, int? Second)
     {
-        return new Foo(Bar ?? this.Bar, Second ?? this.Second);
+        return new Foo(First ?? this.First, Second ?? this.Second);
     }
 }
 ```
